@@ -1,0 +1,1 @@
+A simple QRC decoder written in Go.
