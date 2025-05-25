@@ -123,9 +123,9 @@ func desKeySetup(key []uint32, schedule *[16][6]byte, mode string) {
 
 // --- Initial & inverse permutations ---
 
-func ip(state *[2]uint32, input []byte) {
+func ip(state *[2]uint32, input []byte) error {
 	if len(input) < 8 {
-		panic("input block too small")
+		return fmt.Errorf("input block too small")
 	}
 	state[0] = bitNumKeyByte(input, 57, 31) | bitNumKeyByte(input, 49, 30) | bitNumKeyByte(input, 41, 29) | bitNumKeyByte(input, 33, 28) |
 		bitNumKeyByte(input, 25, 27) | bitNumKeyByte(input, 17, 26) | bitNumKeyByte(input, 9, 25) | bitNumKeyByte(input, 1, 24) |
@@ -144,11 +144,13 @@ func ip(state *[2]uint32, input []byte) {
 		bitNumKeyByte(input, 28, 11) | bitNumKeyByte(input, 20, 10) | bitNumKeyByte(input, 12, 9) | bitNumKeyByte(input, 4, 8) |
 		bitNumKeyByte(input, 62, 7) | bitNumKeyByte(input, 54, 6) | bitNumKeyByte(input, 46, 5) | bitNumKeyByte(input, 38, 4) |
 		bitNumKeyByte(input, 30, 3) | bitNumKeyByte(input, 22, 2) | bitNumKeyByte(input, 14, 1) | bitNumKeyByte(input, 6, 0)
+
+	return nil
 }
 
-func invIP(state *[2]uint32, data []byte) {
+func invIP(state *[2]uint32, data []byte) error {
 	if len(data) < 8 {
-		panic("output block too small")
+		return fmt.Errorf("input block too small")
 	}
 	data[3] = byte(bitNumIntr(state[1], 7, 7) | bitNumIntr(state[0], 7, 6) | bitNumIntr(state[1], 15, 5) | bitNumIntr(state[0], 15, 4) | bitNumIntr(state[1], 23, 3) | bitNumIntr(state[0], 23, 2) | bitNumIntr(state[1], 31, 1) | bitNumIntr(state[0], 31, 0))
 	data[2] = byte(bitNumIntr(state[1], 6, 7) | bitNumIntr(state[0], 6, 6) | bitNumIntr(state[1], 14, 5) | bitNumIntr(state[0], 14, 4) | bitNumIntr(state[1], 22, 3) | bitNumIntr(state[0], 22, 2) | bitNumIntr(state[1], 30, 1) | bitNumIntr(state[0], 30, 0))
@@ -158,6 +160,8 @@ func invIP(state *[2]uint32, data []byte) {
 	data[6] = byte(bitNumIntr(state[1], 2, 7) | bitNumIntr(state[0], 2, 6) | bitNumIntr(state[1], 10, 5) | bitNumIntr(state[0], 10, 4) | bitNumIntr(state[1], 18, 3) | bitNumIntr(state[0], 18, 2) | bitNumIntr(state[1], 26, 1) | bitNumIntr(state[0], 26, 0))
 	data[5] = byte(bitNumIntr(state[1], 1, 7) | bitNumIntr(state[0], 1, 6) | bitNumIntr(state[1], 9, 5) | bitNumIntr(state[0], 9, 4) | bitNumIntr(state[1], 17, 3) | bitNumIntr(state[0], 17, 2) | bitNumIntr(state[1], 25, 1) | bitNumIntr(state[0], 25, 0))
 	data[4] = byte(bitNumIntr(state[1], 0, 7) | bitNumIntr(state[0], 0, 6) | bitNumIntr(state[1], 8, 5) | bitNumIntr(state[0], 8, 4) | bitNumIntr(state[1], 16, 3) | bitNumIntr(state[0], 16, 2) | bitNumIntr(state[1], 24, 1) | bitNumIntr(state[0], 24, 0))
+
+	return nil
 }
 
 // --- DES round function ---
@@ -185,9 +189,14 @@ func fFunc(state uint32, key [6]byte) uint32 {
 
 // --- 3DES wrapper ---
 
-func desCrypt(dataIn []byte, dataOut []byte, key [16][6]byte) {
+func desCrypt(dataIn []byte, dataOut []byte, key [16][6]byte) error {
 	var state [2]uint32
-	ip(&state, dataIn)
+	var err error = nil
+
+	err = ip(&state, dataIn)
+	if err != nil {
+		return err
+	}
 
 	for idx := range 15 {
 		t := state[1]
@@ -196,10 +205,11 @@ func desCrypt(dataIn []byte, dataOut []byte, key [16][6]byte) {
 	}
 	state[0] = fFunc(state[1], key[15]) ^ state[0]
 
-	invIP(&state, dataOut)
+	err = invIP(&state, dataOut)
+	return err
 }
 
-func threeDesKeySetup(key []uint32, schedule *[3][16][6]byte, mode string) {
+func threeDesKeySetup(key []uint32, schedule *[3][16][6]byte, mode string) error {
 	if mode == "encrypt" {
 		desKeySetup(key, &schedule[0], "encrypt")
 		desKeySetup(key[8:], &schedule[1], "decrypt")
@@ -209,14 +219,26 @@ func threeDesKeySetup(key []uint32, schedule *[3][16][6]byte, mode string) {
 		desKeySetup(key[8:], &schedule[1], "encrypt")
 		desKeySetup(key[16:], &schedule[0], "decrypt")
 	} else {
-		panic(fmt.Sprintf("invalid mode %q", mode))
+		return fmt.Errorf("invalid mode %q", mode)
 	}
+	return nil
 }
 
-func threeDesCrypt(dataIn []byte, dataOut []byte, key *[3][16][6]byte) {
-	desCrypt(dataIn, dataOut, key[0])
-	desCrypt(dataOut, dataOut, key[1])
-	desCrypt(dataOut, dataOut, key[2])
+func threeDesCrypt(dataIn []byte, dataOut []byte, key *[3][16][6]byte) error {
+	var err error = nil
+
+	err = desCrypt(dataIn, dataOut, key[0])
+	if err != nil {
+		return err
+	}
+
+	err = desCrypt(dataOut, dataOut, key[1])
+	if err != nil {
+		return err
+	}
+
+	err = desCrypt(dataOut, dataOut, key[2])
+	return err
 }
 
 // DecodeQRC decrypts and decompresses QRC data.
@@ -234,7 +256,12 @@ func DecodeQRC(data []byte) ([]byte, error) {
 		key[i] = uint32(b)
 	}
 
-	threeDesKeySetup(key, &schedule, "decrypt")
+	var err error = nil
+
+	err = threeDesKeySetup(key, &schedule, "decrypt")
+	if err != nil {
+		return nil, fmt.Errorf("failed to init key: %w", err)
+	}
 
 	// decrypt each 8-byte block
 	newData := make([]byte, srcLen)
@@ -247,7 +274,10 @@ func DecodeQRC(data []byte) ([]byte, error) {
 		var outBlock [8]byte
 		copy(inBlock[:], data[i:i+blockLen])
 		copy(outBlock[:], data[i:i+blockLen])
-		threeDesCrypt(data[i:], outBlock[:], &schedule)
+		err = threeDesCrypt(data[i:], outBlock[:], &schedule)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt block %d: %w", i/8, err)
+		}
 		copy(newData[i:], outBlock[:blockLen])
 	}
 
